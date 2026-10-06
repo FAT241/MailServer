@@ -16,7 +16,6 @@ public class ServerFrame extends JFrame {
 
     private final LogPanel logPanel;
     private JLabel statusBadge;
-    private JLabel clientCountLabel;
     private JButton startButton;
     private JButton stopButton;
     private final UDPServer udpServer;
@@ -25,7 +24,7 @@ public class ServerFrame extends JFrame {
 
     public ServerFrame() {
         logPanel  = new LogPanel();
-        udpServer = new UDPServer(logPanel::log, this::onClientCountChanged);
+        udpServer = new UDPServer(logPanel::log);
 
         setTitle("\uD83D\uDCEC Mail Server - Quản lý Máy chủ (UDP)");
         setDefaultCloseOperation(EXIT_ON_CLOSE);
@@ -94,22 +93,6 @@ public class ServerFrame extends JFrame {
         right.add(badgeWrapper);
 
         right.add(Box.createVerticalStrut(6));
-
-        JPanel clientWrapper = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
-        clientWrapper.setOpaque(false);
-
-        clientCountLabel = new JLabel("Clients: 0");
-        clientCountLabel.setFont(FONT_BADGE);
-        clientCountLabel.setForeground(Color.WHITE);
-        clientWrapper.add(clientCountLabel);
-
-        JButton viewClientsBtn = UIFactory.createButton("Xem IP", new Color(0x3B, 0x82, 0xF6), Color.WHITE);
-        viewClientsBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        viewClientsBtn.setPreferredSize(new Dimension(80, 26));
-        viewClientsBtn.addActionListener(e -> showClientsDialog());
-        clientWrapper.add(viewClientsBtn);
-
-        right.add(clientWrapper);
 
         header.add(right, BorderLayout.EAST);
         return header;
@@ -186,22 +169,4 @@ public class ServerFrame extends JFrame {
         portField.setEnabled(true);
     }
 
-    private void onClientCountChanged(int count) {
-        SwingUtilities.invokeLater(() -> clientCountLabel.setText("Clients: " + count));
-    }
-
-    private void showClientsDialog() {
-        java.util.List<String> list = udpServer.getConnectedClientsInfo();
-        if (list.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Hiện tại không có Client nào đang kết nối.", 
-                "Danh sách Client", JOptionPane.INFORMATION_MESSAGE);
-            return;
-        }
-        StringBuilder sb = new StringBuilder("Tổng số kết nối hiện tại: " + list.size() + "\n\n");
-        for (int i = 0; i < list.size(); i++) {
-            sb.append(i + 1).append(". ").append(list.get(i)).append("\n");
-        }
-        JOptionPane.showMessageDialog(this, sb.toString(), 
-            "Danh sách Client Kết Nối", JOptionPane.INFORMATION_MESSAGE);
-    }
 }

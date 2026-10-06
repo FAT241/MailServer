@@ -61,6 +61,7 @@ public class UDPClient {
         }
         udpSocket = null;
         diaChiServer = null;
+        host = null;
     }
 
     /**
@@ -94,21 +95,23 @@ public class UDPClient {
      * Format packet gửi đi:
      *   SEND_MAIL\n
      *   nguoiNhan\n
+     *   tenNguoiGui\n
      *   ipNguoiGui\n
      *   thoiGian\n
      *   tieuDe\n
      *   noiDung\n
      *   <<END_CONTENT>>
      */
-    public synchronized String[] guiEmail(String nguoiNhan, String ipNguoiGui,
-                                          String thoiGian, String tieuDe,
-                                          String noiDung) throws IOException {
+    public synchronized String[] guiEmail(String tenNguoiGui, String nguoiNhan,
+                                          String ipNguoiGui, String thoiGian,
+                                          String tieuDe, String noiDung) throws IOException {
         if (udpSocket == null) throw new IOException("Vui lòng kết nối đến Server trước!");
 
         // Đóng gói toàn bộ email vào 1 chuỗi, phân tách bằng "\n"
         StringBuilder goiTin = new StringBuilder();
         goiTin.append(Protocol.SEND_MAIL).append("\n");
         goiTin.append(nguoiNhan).append("\n");
+        goiTin.append(tenNguoiGui).append("\n");
         goiTin.append(ipNguoiGui).append("\n");
         goiTin.append(thoiGian).append("\n");
         goiTin.append(tieuDe).append("\n");

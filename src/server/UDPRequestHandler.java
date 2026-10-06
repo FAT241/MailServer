@@ -76,14 +76,12 @@ public class UDPRequestHandler {
 
         String thoiGianTao = storage.createUser(tenTaiKhoan, matKhau, serverIP);
         if (thoiGianTao != null) {
-            logger.accept("[ĐĂNG KÝ] Client " + clientIP
-                + " tạo tài khoản: " + tenTaiKhoan
-                + " → Thành công (Thời gian tạo: " + thoiGianTao + ")");
+            logger.accept("[ĐĂNG KÝ] Tạo tài khoản '" + tenTaiKhoan
+                + "' → Thành công (Thời gian tạo: " + thoiGianTao + ")");
             return "SUCCESS|Đăng ký tài khoản '" + tenTaiKhoan
                 + "' thành công! Thời gian tạo: " + thoiGianTao;
         } else {
-            logger.accept("[ĐĂNG KÝ] Client " + clientIP
-                + " tạo tài khoản: " + tenTaiKhoan + " → Thất bại (trùng tên)");
+            logger.accept("[ĐĂNG KÝ] Tạo tài khoản '" + tenTaiKhoan + "' → Thất bại (đã tồn tại)");
             return "FAIL|Tài khoản '" + tenTaiKhoan + "' đã tồn tại trên hệ thống";
         }
     }
@@ -103,23 +101,23 @@ public class UDPRequestHandler {
         String matKhau     = phan.length > 2 ? phan[2] : "";
 
         if (!storage.userExists(tenTaiKhoan)) {
-            logger.accept("[ĐĂNG NHẬP] Client " + clientIP
-                + " đăng nhập: " + tenTaiKhoan + " → Thất bại (tài khoản không tồn tại)");
+            logger.accept("[ĐĂNG NHẬP] '" + tenTaiKhoan
+                + "' → Thất bại (tài khoản không tồn tại)");
             return "FAIL|Tài khoản không tồn tại trên hệ thống!";
         }
 
         String loiMatKhau = storage.kiemTraMatKhau(tenTaiKhoan, matKhau);
         if (loiMatKhau != null) {
-            logger.accept("[ĐĂNG NHẬP] Client " + clientIP
-                + " đăng nhập: " + tenTaiKhoan + " → Thất bại (" + loiMatKhau + ")");
+            logger.accept("[ĐĂNG NHẬP] '" + tenTaiKhoan
+                + "' → Thất bại (" + loiMatKhau + ")");
             return "FAIL|" + loiMatKhau;
         }
 
         String[] danhSachFile = storage.listMails(tenTaiKhoan);
         StringBuilder sb = new StringBuilder("SUCCESS");
         for (String f : danhSachFile) sb.append("|").append(f);
-        logger.accept("[ĐĂNG NHẬP] Client " + clientIP
-            + " đăng nhập: " + tenTaiKhoan + " → Thành công (" + danhSachFile.length + " thư)");
+        logger.accept("[ĐĂNG NHẬP] '" + tenTaiKhoan
+            + "' → Thành công (" + danhSachFile.length + " thư)");
         return sb.toString();
     }
 
@@ -141,8 +139,7 @@ public class UDPRequestHandler {
         String[] danhSachFile = storage.listMails(tenTaiKhoan);
         StringBuilder sb = new StringBuilder("SUCCESS");
         for (String f : danhSachFile) sb.append("|").append(f);
-        logger.accept("[LÀM MỚI] Client " + clientIP
-            + " tải lại hộp thư [" + tenTaiKhoan + "] (" + danhSachFile.length + " thư)");
+        logger.accept("[LÀM MỚI] Hộp thư [" + tenTaiKhoan + "] (" + danhSachFile.length + " thư)");
         return sb.toString();
     }
 
@@ -152,39 +149,41 @@ public class UDPRequestHandler {
      * Dữ liệu mail được gộp trong 1 UDP packet.
      * Format (phanDuLieu - các dòng sau "SEND_MAIL"):
      *   Dòng 1: Tên người nhận
-     *   Dòng 2: IP người gửi
-     *   Dòng 3: Thời gian
-     *   Dòng 4: Tiêu đề
-     *   Dòng 5+: Nội dung thư, kết thúc bằng <<END_CONTENT>>
+     *   Dòng 2: Tên người gửi
+     *   Dòng 3: IP người gửi
+     *   Dòng 4: Thời gian gửi
+     *   Dòng 5: Tiêu đề
+     *   Dòng 6+: Nội dung thư, kết thúc bằng <<END_CONTENT>>
      */
     private String xuLyGuiMail(String phanDuLieu, String clientIP) {
         String[] cacDong = phanDuLieu.split("\n");
-        if (cacDong.length < 5) {
+        if (cacDong.length < 6) {
             return "FAIL|Dữ liệu thư không hợp lệ";
         }
 
-        String nguoiNhan = cacDong[0].trim();
-        String ipGuiThu  = cacDong[1].trim();
-        String thoiGian  = cacDong[2].trim();
-        String tieuDe    = cacDong[3].trim();
+        String nguoiNhan  = cacDong[0].trim();
+        String tenNguoiGui = cacDong[1].trim();
+        String ipGuiThu   = cacDong[2].trim();
+        String thoiGian   = cacDong[3].trim();
+        String tieuDe     = cacDong[4].trim();
 
-        // Ghép nội dung thư từ dòng 5 trở đi
+        // Ghép nội dung thư từ dòng 6 trở đi
         StringBuilder noiDung = new StringBuilder();
-        for (int i = 4; i < cacDong.length; i++) {
+        for (int i = 5; i < cacDong.length; i++) {
             if (cacDong[i].trim().equals(Protocol.END_CONTENT)) break;
             if (noiDung.length() > 0) noiDung.append("\n");
             noiDung.append(cacDong[i]);
         }
 
-        String tenFile = storage.saveMail(nguoiNhan, ipGuiThu, thoiGian, tieuDe, noiDung.toString());
+        String tenFile = storage.saveMail(tenNguoiGui, nguoiNhan, ipGuiThu,
+                                          thoiGian, tieuDe, noiDung.toString());
         if (tenFile != null) {
-            logger.accept("[GỬI THƯ] Từ IP " + ipGuiThu
-                + " gửi đến [" + nguoiNhan + "], Tiêu đề: " + tieuDe
-                + " → Đã lưu: " + tenFile);
+            logger.accept("[GỬI THƯ] " + tenNguoiGui + " → [" + nguoiNhan
+                + "], Tiêu đề: " + tieuDe + " → Đã lưu: " + tenFile);
             return "SUCCESS|Gửi email đến '" + nguoiNhan + "' thành công!";
         } else {
-            logger.accept("[GỬI THƯ] Từ IP " + ipGuiThu
-                + " gửi đến [" + nguoiNhan + "] → Thất bại (không tồn tại)");
+            logger.accept("[GỬI THƯ] " + tenNguoiGui + " → [" + nguoiNhan
+                + "] → Thất bại (không tồn tại)");
             return "FAIL|Người nhận '" + nguoiNhan + "' không tồn tại trên hệ thống!";
         }
     }
@@ -206,7 +205,7 @@ public class UDPRequestHandler {
 
             // Gộp header + nội dung + footer vào 1 response packet
             String response = Protocol.MAIL_START + "\n" + noiDungMail + "\n" + Protocol.MAIL_END;
-            logger.accept("[ĐỌC THƯ] Client đọc " + tenFile + " trong hộp thư [" + tenTaiKhoan + "]");
+            logger.accept("[ĐỌC THƯ] '" + tenTaiKhoan + "' đọc " + tenFile);
             return response;
         } catch (IOException e) {
             return "FAIL|Lỗi đọc file: " + e.getMessage();

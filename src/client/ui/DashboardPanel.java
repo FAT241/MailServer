@@ -81,7 +81,14 @@ public class DashboardPanel extends JPanel {
 
         JButton logoutBtn = UIFactory.createButton("Đăng xuất", ACCENT_RED, Color.WHITE);
         logoutBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        logoutBtn.addActionListener(e -> logoutCallback.onLogout());
+        logoutBtn.addActionListener(e -> {
+            // Báo server ngắt kết nối rồi mới đóng socket
+            try {
+                udpClient.guiLenhDon(Protocol.QUIT + "|" + (username == null ? "" : username));
+            } catch (Exception ignored) {}
+            udpClient.ngonKetNoi();
+            logoutCallback.onLogout();
+        });
         header.add(logoutBtn, BorderLayout.EAST);
 
         return header;
@@ -274,7 +281,7 @@ public class DashboardPanel extends JPanel {
         statusBar.log("Đang gửi UDP packet email đến " + to + "...");
 
         try {
-            String[] result = udpClient.guiEmail(to, sender, time, subject, content);  // ★ UDP: guiEmail()
+            String[] result = udpClient.guiEmail(username, to, sender, time, subject, content);  // ★ UDP: guiEmail()
             if (result[0].equals(Protocol.SUCCESS)) {
                 String msg = result.length > 1 ? result[1] : "Gửi thành công!";
                 statusBar.log("Đã gửi email thành công đến user: " + to);

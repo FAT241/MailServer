@@ -166,7 +166,8 @@ public class ClientFrame extends JFrame {
 
     private void onLogout() {
         cardLayout.show(cardPanel, VIEW_AUTH);
-        statusBar.log("Đã đăng xuất.");
+        UIFactory.updateBadge(statusBadge, "  ⚪  CHƯA KẾT NỐI  ", GRAY_BADGE);
+        statusBar.log("Đã đăng xuất và ngắt kết nối với máy chủ.");
     }
 
     /* ═══════════════════════════════════════════════════ */

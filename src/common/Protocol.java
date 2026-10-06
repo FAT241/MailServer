@@ -14,6 +14,7 @@ public final class Protocol {
     public static final String LIST_MAIL   = "LIST_MAIL";
     public static final String SEND_MAIL   = "SEND_MAIL";
     public static final String READ_MAIL   = "READ_MAIL";
+    public static final String QUIT        = "QUIT";
 
     /* ── Responses (Server → Client) ───────────────────── */
     public static final String PONG        = "PONG";

@@ -22,20 +22,19 @@ public class AuthPanel extends JPanel {
     }
 
     private final JTextField usernameField;
-    private final JTextField passwordField;   // ★ Mật khẩu hiển thị rõ (không che bằng *)
-    private final UDPClient udpClient;  // ★ UDP: Dùng UDPClient
+    private final JTextField passwordField;  
+    private final UDPClient udpClient; 
     private final StatusBar statusBar;
     private final LoginCallback callback;
 
     public AuthPanel(UDPClient udpClient, StatusBar statusBar, LoginCallback callback) {
-        this.udpClient = udpClient;  // ★ UDP
+        this.udpClient = udpClient;  // UDP
         this.statusBar = statusBar;
         this.callback  = callback;
 
         setLayout(new GridBagLayout());
         setBackground(BG_MAIN);
 
-        /* ── Card trung tâm ──────────────────────────────── */
         JPanel card = UIFactory.createCardPanel();
         card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
         card.setPreferredSize(new Dimension(420, 420));

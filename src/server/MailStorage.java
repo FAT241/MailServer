@@ -9,12 +9,15 @@ import static common.AppConstants.STORAGE_DIR;
 /**
  * Quản lý I/O file cho hệ thống mail.
  * Tạo user, lưu mail, đọc mail, liệt kê thư.
- * Thông tin tài khoản (tên, mật khẩu, thời gian tạo) lưu trong mail_storage/accounts.txt
+ * Thông tin tài khoản (username, mật khẩu, thời gian tạo) lưu trong
+ * file RIÊNG account.txt nằm trong thư mục của từng user.
  */
 public class MailStorage {
 
-    /** File lưu danh sách tài khoản: username|mật khẩu|thời gian tạo */
-    private static final String ACCOUNT_FILE = "accounts.txt";
+    /** File thông tin tài khoản riêng của mỗi user (nằm trong folder user). */
+    private static final String ACCOUNT_FILE = "account.txt";
+    /** File tài khoản cũ (một thời gian) - chỉ dùng để migrate sang folder. */
+    private static final String LEGACY_ACCOUNT_FILE = "accounts.txt";
     private static final String TIME_FORMAT  = "yyyy-MM-dd HH:mm:ss";
 
     /** Bộ nhớ phụ của file tài khoản, nạp 1 lần khi khởi động. */
@@ -32,33 +35,24 @@ public class MailStorage {
     }
 
     /**
-     * Tạo tài khoản mới + ghi vào file tài khoản + file chào mừng.
-     * @return Thời gian tạo tài khoản (đã ghi vào file), hoặc null nếu thất bại.
+     * Tạo tài khoản mới: tạo thư mục + file account.txt chứa 3 trường
+     * (username, password, thời gian tạo). KHÔNG tạo mail chào mừng.
+     * @return Thời gian tạo tài khoản, hoặc null nếu thất bại/trùng.
      */
     public String createUser(String username, String password, String serverIP) {
         if (!isValidName(username) || !isValidPassword(password)) return null;
 
         File dir = new File(STORAGE_DIR, username);
-        TaiKhoan acc = accounts.get(username);
-        // Đã có bản ghi và đã đặt mật khẩu → không cho tạo trùng
-        if (acc != null && !acc.matKhau.isEmpty()) return null;
+        if (new File(dir, ACCOUNT_FILE).exists()) return null; // đã có tài khoản
 
         boolean moi = !dir.exists();
         if (moi && !dir.mkdirs()) return null;
 
-        // Tài khoản cũ (tạo trước khi có mật khẩu) → chỉ cập nhật mật khẩu,
-        // giữ nguyên thời gian tạo ban đầu.
-        if (acc == null) {
-            Date ngayTao = new Date(moi ? System.currentTimeMillis() : dir.lastModified());
-            acc = new TaiKhoan("", new SimpleDateFormat(TIME_FORMAT).format(ngayTao));
-            accounts.put(username, acc);
-        }
-
-        acc.matKhau = password;
-        luuFileAccounts();
-
-        if (moi) createWelcomeEmail(dir, serverIP);
-        return acc.taoLuc;
+        String taoLuc = new SimpleDateFormat(TIME_FORMAT).format(
+            new Date(moi ? System.currentTimeMillis() : dir.lastModified()));
+        TaiKhoan acc = new TaiKhoan(password, taoLuc);
+        accounts.put(username, acc);
+        return ghiAccountFile(username, acc) ? taoLuc : null;
     }
 
     /**
@@ -76,20 +70,21 @@ public class MailStorage {
         return null;
     }
 
-    /** Liệt kê tất cả file mail trong hộp thư của user. */
+    /** Liệt kê tất cả file mail trong hộp thư của user (ẩn file account.txt). */
     public String[] listMails(String username) {
         if (!isValidName(username)) return new String[0];
         File dir = new File(STORAGE_DIR, username);
-        String[] files = dir.list();
+        String[] files = dir.list((d, name) -> !name.equals(ACCOUNT_FILE));
         if (files != null) Arrays.sort(files);
         return files != null ? files : new String[0];
     }
 
     /**
      * Lưu email vào thư mục người nhận.
+     * File mail chứa: tên người gửi, IP người gửi, thời gian, tiêu đề, nội dung.
      * @return Tên file đã lưu, hoặc null nếu thất bại.
      */
-    public String saveMail(String toUser, String senderIP,
+    public String saveMail(String tenNguoiGui, String toUser, String senderIP,
                            String time, String subject, String content) {
         if (!isValidName(toUser)) return null;
         File dir = new File(STORAGE_DIR, toUser);
@@ -104,6 +99,7 @@ public class MailStorage {
 
         try (PrintWriter pw = new PrintWriter(new OutputStreamWriter(
                 new FileOutputStream(new File(dir, filename)), "UTF-8"))) {
+            pw.println("Sender: " + tenNguoiGui);
             pw.println("Sender IP: " + senderIP);
             pw.println("Time: " + time);
             pw.println("Subject: " + subject);
@@ -115,9 +111,10 @@ public class MailStorage {
         return filename;
     }
 
-    /** Đọc nội dung file mail. Trả null nếu file không tồn tại. */
+    /** Đọc nội dung file mail. Trả null nếu file không tồn tại hoặc là file tài khoản. */
     public String readMail(String username, String filename) throws IOException {
         if (!isValidName(username) || !isValidName(filename)) return null;
+        if (filename.equals(ACCOUNT_FILE)) return null; // không lộ mật khẩu
         File file = new File(STORAGE_DIR + File.separator + username, filename);
         if (!file.exists()) return null;
 
@@ -150,54 +147,6 @@ public class MailStorage {
             && !password.contains("|") && !password.contains("\n");
     }
 
-    /** Nạp file tài khoản + tạo bản ghi cho thư mục user cũ chưa có mật khẩu. */
-    private void docFileAccounts() {
-        File file = new File(STORAGE_DIR, ACCOUNT_FILE);
-        if (file.exists()) {
-            try (BufferedReader br = new BufferedReader(new InputStreamReader(
-                    new FileInputStream(file), "UTF-8"))) {
-                String line;
-                while ((line = br.readLine()) != null) {
-                    if (line.trim().isEmpty()) continue;
-                    String[] phan = line.split("\\|", 3);
-                    if (phan.length == 3) {
-                        accounts.put(phan[0], new TaiKhoan(phan[1], phan[2]));
-                    } else if (phan.length == 2) {
-                        accounts.put(phan[0], new TaiKhoan(phan[1], ""));
-                    }
-                }
-            } catch (IOException e) {
-                System.err.println("[MailStorage] Lỗi đọc file tài khoản: " + e.getMessage());
-            }
-        }
-
-        // Thư mục user tồn tại nhưng chưa có bản ghi → bổ sung (mật khẩu trống)
-        boolean coDoi = false;
-        File[] cacThuMuc = new File(STORAGE_DIR).listFiles(File::isDirectory);
-        if (cacThuMuc != null) {
-            for (File d : cacThuMuc) {
-                if (!accounts.containsKey(d.getName())) {
-                    String taoLuc = new SimpleDateFormat(TIME_FORMAT).format(new Date(d.lastModified()));
-                    accounts.put(d.getName(), new TaiKhoan("", taoLuc));
-                    coDoi = true;
-                }
-            }
-        }
-        if (coDoi) luuFileAccounts();
-    }
-
-    /** Ghi/ghi lại toàn bộ file tài khoản. */
-    private void luuFileAccounts() {
-        try (PrintWriter pw = new PrintWriter(new OutputStreamWriter(
-                new FileOutputStream(new File(STORAGE_DIR, ACCOUNT_FILE)), "UTF-8"))) {
-            for (Map.Entry<String, TaiKhoan> e : accounts.entrySet()) {
-                pw.println(e.getKey() + "|" + e.getValue().matKhau + "|" + e.getValue().taoLuc);
-            }
-        } catch (IOException e) {
-            System.err.println("[MailStorage] Lỗi ghi file tài khoản: " + e.getMessage());
-        }
-    }
-
     private boolean isValidName(String name) {
         if (name == null || name.isEmpty() || name.contains("..") || name.contains("/") || name.contains("\\")) {
             return false;
@@ -205,18 +154,105 @@ public class MailStorage {
         return true;
     }
 
-    private void createWelcomeEmail(File userDir, String serverIP) {
-        try (PrintWriter pw = new PrintWriter(new OutputStreamWriter(
-                new FileOutputStream(new File(userDir, "new_email.txt")), "UTF-8"))) {
-            String now = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
-            pw.println("Sender IP: " + serverIP);
-            pw.println("Time: " + now);
-            pw.println("Subject: Chào mừng bạn đến với Mail System!");
-            pw.println("Content:");
-            pw.println("Thank you for using this service. We hope that you will feel comfortable using our mail system.");
-            pw.println("Hãy bắt đầu gửi và nhận email ngay bây giờ!");
+    /**
+     * Nạp tài khoản từ account.txt trong từng folder user.
+     * Folder chưa có account.txt → migrate từ file accounts.txt cũ (nếu có),
+     * không mất dữ liệu tài khoản cũ.
+     */
+    private void docFileAccounts() {
+        // 1. Nạp file cũ (nếu có) làm nguồn migrate
+        Map<String, TaiKhoan> cu = new LinkedHashMap<>();
+        File legacyFile = new File(STORAGE_DIR, LEGACY_ACCOUNT_FILE);
+        if (legacyFile.exists()) {
+            try {
+                for (String line : docUTF8(legacyFile).split("\r?\n")) {
+                    if (line.trim().isEmpty()) continue;
+                    String[] phan = line.split("\\|", 3);
+                    if (phan.length == 3) {
+                        cu.put(phan[0], new TaiKhoan(phan[1], phan[2]));
+                    } else if (phan.length == 2) {
+                        cu.put(phan[0], new TaiKhoan(phan[1], ""));
+                    }
+                }
+            } catch (IOException e) {
+                System.err.println("[MailStorage] Lỗi đọc file tài khoản cũ: " + e.getMessage());
+            }
+        }
+
+        // 2. Mọi user từ file cũ phải có folder + account.txt (kể cả chưa từng có folder)
+        for (Map.Entry<String, TaiKhoan> e : cu.entrySet()) {
+            accounts.put(e.getKey(), e.getValue());
+            File accFile = new File(new File(STORAGE_DIR, e.getKey()), ACCOUNT_FILE);
+            if (!accFile.exists()) ghiAccountFile(e.getKey(), e.getValue());
+        }
+
+        // 3. Quét từng folder user, đọc account.txt riêng (nguồn chính khi đã migrate)
+        File[] cacThuMuc = new File(STORAGE_DIR).listFiles(File::isDirectory);
+        if (cacThuMuc == null) return;
+        for (File d : cacThuMuc) {
+            String ten = d.getName();
+            File accFile = new File(d, ACCOUNT_FILE);
+            TaiKhoan tk;
+
+            if (accFile.exists()) {
+                tk = docAccountFile(accFile);
+                if (tk == null) continue;
+            } else if (cu.containsKey(ten)) {
+                // Migrate từ file cũ sang account.txt trong folder
+                tk = cu.get(ten);
+                ghiAccountFile(ten, tk);
+            } else {
+                // Folder chưa có thông tin → tạo với mật khẩu trống
+                tk = new TaiKhoan("", new SimpleDateFormat(TIME_FORMAT).format(new Date(d.lastModified())));
+                ghiAccountFile(ten, tk);
+            }
+            accounts.put(ten, tk);
+        }
+    }
+
+    /** Đọc toàn bộ file UTF-8, bỏ BOM (nếu có) ở đầu. */
+    private String docUTF8(File f) throws IOException {
+        String s = new String(java.nio.file.Files.readAllBytes(f.toPath()), "UTF-8");
+        if (!s.isEmpty() && s.charAt(0) == '\uFEFF') s = s.substring(1);
+        return s;
+    }
+
+    /** Đọc 1 file account.txt (username=, password=, created=). Trả null nếu hỏng. */
+    private TaiKhoan docAccountFile(File accFile) {
+        try {
+            String all = docUTF8(accFile);
+            String matKhau = null, taoLuc = null;
+            for (String line : all.split("\r?\n")) {
+                if (line.startsWith("password=")) matKhau = line.substring(9);
+                else if (line.startsWith("created=")) taoLuc = line.substring(8);
+            }
+            if (matKhau == null) {
+                // Lỗi cũ: file ghi kiểu user|pass|time → đọc thêm fallback
+                String[] phan = all.trim().split("\\|", 3);
+                if (phan.length == 3) return new TaiKhoan(phan[1], phan[2]);
+                if (phan.length == 2) return new TaiKhoan(phan[1], "");
+                return null;
+            }
+            return new TaiKhoan(matKhau, taoLuc == null ? "" : taoLuc);
         } catch (IOException e) {
-            System.err.println("[MailStorage] Lỗi tạo welcome email: " + e.getMessage());
+            System.err.println("[MailStorage] Lỗi đọc account.txt: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /** Ghi account.txt (3 trường) vào thư mục của user. */
+    private boolean ghiAccountFile(String username, TaiKhoan tk) {
+        File dir = new File(STORAGE_DIR, username);
+        if (!dir.exists() && !dir.mkdirs()) return false;
+        try (PrintWriter pw = new PrintWriter(new OutputStreamWriter(
+                new FileOutputStream(new File(dir, ACCOUNT_FILE)), "UTF-8"))) {
+            pw.println("username=" + username);
+            pw.println("password=" + tk.matKhau);
+            pw.println("created=" + tk.taoLuc);
+            return true;
+        } catch (IOException e) {
+            System.err.println("[MailStorage] Lỗi ghi account.txt: " + e.getMessage());
+            return false;
         }
     }
 }
