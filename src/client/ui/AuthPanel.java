@@ -3,7 +3,7 @@ package client.ui;
 import javax.swing.*;
 import javax.swing.border.*;
 import java.awt.*;
-import client.NetworkClient;
+import client.UDPClient;
 import common.Protocol;
 import common.UIFactory;
 
@@ -21,12 +21,12 @@ public class AuthPanel extends JPanel {
     }
 
     private final JTextField usernameField;
-    private final NetworkClient network;
+    private final UDPClient udpClient;  // ★ UDP: Dùng UDPClient
     private final StatusBar statusBar;
     private final LoginCallback callback;
 
-    public AuthPanel(NetworkClient network, StatusBar statusBar, LoginCallback callback) {
-        this.network   = network;
+    public AuthPanel(UDPClient udpClient, StatusBar statusBar, LoginCallback callback) {
+        this.udpClient = udpClient;  // ★ UDP
         this.statusBar = statusBar;
         this.callback  = callback;
 
@@ -48,7 +48,7 @@ public class AuthPanel extends JPanel {
 
         JLabel subtitle = new JLabel("Nhập tên tài khoản để tiếp tục");
         subtitle.setFont(FONT_BODY);
-        subtitle.setForeground(new Color(0x47, 0x55, 0x69)); // Dark slate for better contrast
+        subtitle.setForeground(new Color(0x47, 0x55, 0x69));
         subtitle.setAlignmentX(Component.CENTER_ALIGNMENT);
         card.add(subtitle);
         card.add(Box.createVerticalStrut(20));
@@ -100,9 +100,9 @@ public class AuthPanel extends JPanel {
                 "Vui lòng nhập tên tài khoản!", "Thông báo", JOptionPane.WARNING_MESSAGE);
             return;
         }
-        statusBar.log("Đang gửi yêu cầu đăng nhập...");
+        statusBar.log("Đang gửi UDP packet đăng nhập...");
         try {
-            String resp = network.sendCommand(Protocol.LOGIN + "|" + user);
+            String resp = udpClient.guiLenhDon(Protocol.LOGIN + "|" + user);  // ★ UDP: guiLenhDon()
             String[] parts = resp.split("\\|");
             if (parts[0].equals(Protocol.SUCCESS)) {
                 String[] files = new String[parts.length - 1];
@@ -134,9 +134,9 @@ public class AuthPanel extends JPanel {
                 "Vui lòng nhập tên tài khoản!", "Thông báo", JOptionPane.WARNING_MESSAGE);
             return;
         }
-        statusBar.log("Đang gửi yêu cầu đăng ký tài khoản '" + user + "'...");
+        statusBar.log("Đang gửi UDP packet đăng ký tài khoản '" + user + "'...");
         try {
-            String resp = network.sendCommand(Protocol.REGISTER + "|" + user);
+            String resp = udpClient.guiLenhDon(Protocol.REGISTER + "|" + user);  // ★ UDP: guiLenhDon()
             String[] parts = resp.split("\\|", 2);
             String msg = parts.length > 1 ? parts[1] : "";
             if (parts[0].equals(Protocol.SUCCESS)) {

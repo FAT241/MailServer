@@ -3,15 +3,14 @@ package server.ui;
 import javax.swing.*;
 import javax.swing.border.*;
 import java.awt.*;
-import java.net.InetAddress;
-import server.ServerEngine;
+import server.UDPServer;
 
 import static common.AppConstants.*;
 import common.UIFactory;
 
 /**
  * Cửa sổ chính của Mail Server.
- * Lắp ráp: Header (IP, trạng thái) + LogPanel + nút điều khiển.
+ * Người dùng tự nhập tay Bind IP và Port trong giao diện.
  */
 public class ServerFrame extends JFrame {
 
@@ -20,18 +19,18 @@ public class ServerFrame extends JFrame {
     private JLabel clientCountLabel;
     private JButton startButton;
     private JButton stopButton;
-    private final ServerEngine engine;
+    private final UDPServer udpServer;
     private JTextField hostField;
     private JTextField portField;
 
     public ServerFrame() {
-        logPanel = new LogPanel();
-        engine   = new ServerEngine(logPanel::log, this::onClientCountChanged);
+        logPanel  = new LogPanel();
+        udpServer = new UDPServer(logPanel::log, this::onClientCountChanged);
 
-        setTitle("\uD83D\uDCEC Mail Server - Quản lý Máy chủ");
+        setTitle("\uD83D\uDCEC Mail Server - Quản lý Máy chủ (UDP)");
         setDefaultCloseOperation(EXIT_ON_CLOSE);
-        setSize(860, 640);
-        setMinimumSize(new Dimension(700, 500));
+        setSize(880, 640);
+        setMinimumSize(new Dimension(750, 500));
         setLocationRelativeTo(null);
         getContentPane().setBackground(BG_MAIN);
         setLayout(new BorderLayout());
@@ -40,8 +39,6 @@ public class ServerFrame extends JFrame {
         add(buildCenter(), BorderLayout.CENTER);
         add(buildFooter(), BorderLayout.SOUTH);
 
-        /* ── Khởi tạo badge mặc định ──────────────────── */
-        // statusBadge already initialized in buildHeader
         setVisible(true);
     }
 
@@ -49,18 +46,18 @@ public class ServerFrame extends JFrame {
     private JPanel buildHeader() {
         JPanel header = UIFactory.createHeaderPanel();
 
-        // Left: title + IP
+        // Left Panel: Title (trên) + Bind IP/Port Config nhập tay (dưới)
         JPanel left = new JPanel();
         left.setOpaque(false);
         left.setLayout(new BoxLayout(left, BoxLayout.Y_AXIS));
 
-        JLabel title = new JLabel("\uD83D\uDCEC  MAIL SERVER DASHBOARD");
+        JLabel title = new JLabel("\uD83D\uDCEC  MAIL SERVER DASHBOARD (UDP)");
         title.setFont(FONT_TITLE);
         title.setForeground(Color.WHITE);
         left.add(title);
-        left.add(Box.createVerticalStrut(4));
+        left.add(Box.createVerticalStrut(6));
 
-        // Form config IP/Port
+        // Form config IP/Port nhập tay
         JPanel configPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
         configPanel.setOpaque(false);
 
@@ -69,7 +66,7 @@ public class ServerFrame extends JFrame {
         hostLabel.setForeground(Color.WHITE);
         configPanel.add(hostLabel);
 
-        hostField = new JTextField("", 12);
+        hostField = new JTextField("", 10);
         hostField.setFont(FONT_BODY);
         configPanel.add(hostField);
 
@@ -85,27 +82,34 @@ public class ServerFrame extends JFrame {
         left.add(configPanel);
         header.add(left, BorderLayout.WEST);
 
-        // Right: status badge + client count + button
-        JPanel rightInner = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 0));
-        rightInner.setOpaque(false);
+        // Right Panel: Status Badge (trên) + Client Count & Button (dưới)
+        JPanel right = new JPanel();
+        right.setOpaque(false);
+        right.setLayout(new BoxLayout(right, BoxLayout.Y_AXIS));
 
+        JPanel badgeWrapper = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        badgeWrapper.setOpaque(false);
         statusBadge = UIFactory.createBadge("  \u26AA  CHƯA KHỞI ĐỘNG  ", GRAY_BADGE);
-        rightInner.add(statusBadge);
+        badgeWrapper.add(statusBadge);
+        right.add(badgeWrapper);
+
+        right.add(Box.createVerticalStrut(6));
+
+        JPanel clientWrapper = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        clientWrapper.setOpaque(false);
 
         clientCountLabel = new JLabel("Clients: 0");
         clientCountLabel.setFont(FONT_BADGE);
         clientCountLabel.setForeground(Color.WHITE);
-        rightInner.add(clientCountLabel);
+        clientWrapper.add(clientCountLabel);
 
         JButton viewClientsBtn = UIFactory.createButton("Xem IP", new Color(0x3B, 0x82, 0xF6), Color.WHITE);
         viewClientsBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        viewClientsBtn.setPreferredSize(new Dimension(90, 32));
+        viewClientsBtn.setPreferredSize(new Dimension(80, 26));
         viewClientsBtn.addActionListener(e -> showClientsDialog());
-        rightInner.add(viewClientsBtn);
+        clientWrapper.add(viewClientsBtn);
 
-        JPanel right = new JPanel(new GridBagLayout());
-        right.setOpaque(false);
-        right.add(rightInner);
+        right.add(clientWrapper);
 
         header.add(right, BorderLayout.EAST);
         return header;
@@ -146,18 +150,21 @@ public class ServerFrame extends JFrame {
 
     private void doStart() {
         String bindIp = hostField.getText().trim();
+        if (bindIp.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Vui lòng nhập Bind IP (ví dụ: 127.0.0.1 hoặc 0.0.0.0)!", "Thông báo", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
         int port;
         try { port = Integer.parseInt(portField.getText().trim()); }
         catch (NumberFormatException ex) {
-            JOptionPane.showMessageDialog(this, "Cổng không hợp lệ!", "Lỗi", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Vui lòng nhập cổng hợp lệ!", "Lỗi", JOptionPane.ERROR_MESSAGE);
             return;
         }
 
         try {
-            engine.start(bindIp, port);
-            UIFactory.updateBadge(statusBadge,
-                "  \uD83D\uDFE2  ĐANG HOẠT ĐỘNG - " + engine.getServerIP() + ":" + engine.getPort() + "  ",
-                STATUS_OK_BG);
+            udpServer.startUDPServer(bindIp, port);
+            UIFactory.updateBadge(statusBadge, "  \uD83D\uDFE2  ĐANG HOẠT ĐỘNG  ", STATUS_OK_BG);
             startButton.setEnabled(false);
             stopButton.setEnabled(true);
             hostField.setEnabled(false);
@@ -171,7 +178,7 @@ public class ServerFrame extends JFrame {
     }
 
     private void doStop() {
-        engine.stop();
+        udpServer.stopUDPServer();
         UIFactory.updateBadge(statusBadge, "  \uD83D\uDD34  ĐÃ DỪNG  ", STATUS_ERR_BG);
         startButton.setEnabled(true);
         stopButton.setEnabled(false);
@@ -184,7 +191,7 @@ public class ServerFrame extends JFrame {
     }
 
     private void showClientsDialog() {
-        java.util.List<String> list = engine.getConnectedClientsInfo();
+        java.util.List<String> list = udpServer.getConnectedClientsInfo();
         if (list.isEmpty()) {
             JOptionPane.showMessageDialog(this, "Hiện tại không có Client nào đang kết nối.", 
                 "Danh sách Client", JOptionPane.INFORMATION_MESSAGE);

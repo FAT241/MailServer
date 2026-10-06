@@ -1,0 +1,6 @@
+Sender IP: 192.168.1.58
+Time: 2026-10-05 20:48:06
+Subject: Chào mừng bạn đến với Mail System!
+Content:
+Thank you for using this service. We hope that you will feel comfortable using our mail system.
+Hãy bắt đầu gửi và nhận email ngay bây giờ!

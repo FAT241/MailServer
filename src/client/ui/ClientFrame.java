@@ -3,24 +3,22 @@ package client.ui;
 import javax.swing.*;
 import javax.swing.border.*;
 import java.awt.*;
-import client.NetworkClient;
+import client.UDPClient;
 import common.UIFactory;
 
 import static common.AppConstants.*;
 
 /**
  * Cửa sổ chính của Mail Client.
- * Header: IP/Port + Kết nối + Badge trạng thái.
- * Body:   CardLayout chuyển đổi giữa AuthPanel và DashboardPanel.
- * Footer: StatusBar mini-log.
+ * Người dùng tự nhập tay Server IP và Port trong giao diện.
  */
 public class ClientFrame extends JFrame {
 
     private static final String VIEW_AUTH      = "AUTH";
     private static final String VIEW_DASHBOARD = "DASHBOARD";
 
-    private final NetworkClient network = new NetworkClient();
-    private final StatusBar statusBar   = new StatusBar();
+    private final UDPClient udpClient = new UDPClient();
+    private final StatusBar statusBar = new StatusBar();
 
     /* ── Header components ─────────────────────────────── */
     private JTextField hostField;
@@ -37,7 +35,7 @@ public class ClientFrame extends JFrame {
     private Timer pingTimer;
 
     public ClientFrame() {
-        setTitle("\uD83D\uDCE7 Mail Client");
+        setTitle("\uD83D\uDCE7 Mail Client (UDP)");
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setSize(960, 680);
         setMinimumSize(new Dimension(800, 550));
@@ -61,12 +59,12 @@ public class ClientFrame extends JFrame {
         JPanel header = UIFactory.createHeaderPanel();
 
         // Left: Title
-        JLabel title = new JLabel("\uD83D\uDCE7  MAIL CLIENT");
+        JLabel title = new JLabel("\uD83D\uDCE7  MAIL CLIENT (UDP)");
         title.setFont(FONT_TITLE);
         title.setForeground(Color.WHITE);
         header.add(title, BorderLayout.WEST);
 
-        // Center: Connection form
+        // Center: Connection form nhập tay
         JPanel connPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 0));
         connPanel.setOpaque(false);
 
@@ -95,7 +93,7 @@ public class ClientFrame extends JFrame {
 
         header.add(connPanel, BorderLayout.CENTER);
 
-        // Right: Status badge
+        // Right: Status badge gọn gàng
         statusBadge = UIFactory.createBadge("  \u26AA  CHƯA KẾT NỐI  ", GRAY_BADGE);
         header.add(statusBadge, BorderLayout.EAST);
 
@@ -105,8 +103,8 @@ public class ClientFrame extends JFrame {
     private JPanel buildBody() {
         cardPanel.setBackground(BG_MAIN);
 
-        AuthPanel authPanel = new AuthPanel(network, statusBar, this::onLoginSuccess);
-        dashboardPanel = new DashboardPanel(network, statusBar, this::onLogout);
+        AuthPanel authPanel = new AuthPanel(udpClient, statusBar, this::onLoginSuccess);
+        dashboardPanel = new DashboardPanel(udpClient, statusBar, this::onLogout);
 
         cardPanel.add(authPanel, VIEW_AUTH);
         cardPanel.add(dashboardPanel, VIEW_DASHBOARD);
@@ -121,6 +119,12 @@ public class ClientFrame extends JFrame {
 
     private void doConnect() {
         String host = hostField.getText().trim();
+        if (host.isEmpty()) {
+            JOptionPane.showMessageDialog(this,
+                "Vui lòng nhập IP máy chủ!", "Thông báo", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
         int port;
         try { port = Integer.parseInt(portField.getText().trim()); }
         catch (NumberFormatException e) {
@@ -129,26 +133,22 @@ public class ClientFrame extends JFrame {
             return;
         }
 
-        statusBar.log("Đang kết nối đến Server " + host + ":" + port + "...");
+        statusBar.log("Đang kết nối đến Server UDP " + host + ":" + port + "...");
         connectButton.setEnabled(false);
 
         // Kết nối trên background thread để không block EDT
         new Thread(() -> {
             try {
-                network.connect(host, port);
+                udpClient.ketNoiDenUDPServer(host, port);
                 SwingUtilities.invokeLater(() -> {
-                    UIFactory.updateBadge(statusBadge,
-                        "  \uD83D\uDFE2  ĐÃ KẾT NỐI ĐẾN SERVER: " + host + ":" + port + "  ",
-                        STATUS_OK_BG);
+                    UIFactory.updateBadge(statusBadge, "  \uD83D\uDFE2  ĐÃ KẾT NỐI  ", STATUS_OK_BG);
                     connectButton.setText("\uD83D\uDD04 Kết nối lại");
                     connectButton.setEnabled(true);
-                    statusBar.log("Kết nối thành công! Socket sẵn sàng.");
+                    statusBar.log("Kết nối UDP thành công đến " + host + ":" + port + "! Sẵn sàng.");
                 });
             } catch (Exception e) {
                 SwingUtilities.invokeLater(() -> {
-                    UIFactory.updateBadge(statusBadge,
-                        "  \uD83D\uDD34  MẤT KẾT NỐI / KHÔNG THỂ KẾT NỐI  ",
-                        STATUS_ERR_BG);
+                    UIFactory.updateBadge(statusBadge, "  \uD83D\uDD34  MẤT KẾT NỐI  ", STATUS_ERR_BG);
                     connectButton.setEnabled(true);
                     statusBar.log("Kết nối thất bại: " + e.getMessage());
                     JOptionPane.showMessageDialog(ClientFrame.this,
@@ -176,17 +176,12 @@ public class ClientFrame extends JFrame {
     private void startPingTimer() {
         pingTimer = new Timer(8000, e -> {
             new Thread(() -> {
-                boolean ok = network.isConnected();
+                boolean ok = udpClient.kiemTraKetNoi();
                 SwingUtilities.invokeLater(() -> {
                     if (ok) {
-                        UIFactory.updateBadge(statusBadge,
-                            "  \uD83D\uDFE2  ĐÃ KẾT NỐI ĐẾN SERVER: "
-                                + network.getHost() + ":" + network.getPort() + "  ",
-                            STATUS_OK_BG);
-                    } else if (network.getHost() != null) {
-                        UIFactory.updateBadge(statusBadge,
-                            "  \uD83D\uDD34  MẤT KẾT NỐI / KHÔNG THỂ KẾT NỐI  ",
-                            STATUS_ERR_BG);
+                        UIFactory.updateBadge(statusBadge, "  \uD83D\uDFE2  ĐÃ KẾT NỐI  ", STATUS_OK_BG);
+                    } else if (udpClient.getHost() != null) {
+                        UIFactory.updateBadge(statusBadge, "  \uD83D\uDD34  MẤT KẾT NỐI  ", STATUS_ERR_BG);
                     }
                 });
             }).start();

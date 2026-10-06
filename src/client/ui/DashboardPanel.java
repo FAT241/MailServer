@@ -6,7 +6,7 @@ import java.awt.*;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
-import client.NetworkClient;
+import client.UDPClient;
 import common.Protocol;
 import common.UIFactory;
 
@@ -20,7 +20,7 @@ public class DashboardPanel extends JPanel {
     /** Callback khi đăng xuất. */
     public interface LogoutCallback { void onLogout(); }
 
-    private final NetworkClient network;
+    private final UDPClient udpClient;  // ★ UDP: Dùng UDPClient
     private final StatusBar statusBar;
     private final LogoutCallback logoutCallback;
     private String username;
@@ -39,8 +39,8 @@ public class DashboardPanel extends JPanel {
     /* ── Header ────────────────────────────────────────── */
     private JLabel headerLabel;
 
-    public DashboardPanel(NetworkClient network, StatusBar statusBar, LogoutCallback logoutCallback) {
-        this.network        = network;
+    public DashboardPanel(UDPClient udpClient, StatusBar statusBar, LogoutCallback logoutCallback) {
+        this.udpClient      = udpClient;  // ★ UDP
         this.statusBar      = statusBar;
         this.logoutCallback = logoutCallback;
 
@@ -55,8 +55,8 @@ public class DashboardPanel extends JPanel {
     public void load(String username, String[] files) {
         this.username = username;
         headerLabel.setText("   Tài khoản: " + username
-            + "   |   Máy chủ: " + network.getHost()
-            + "   |   Trạng thái: Đã kết nối");
+            + "   |   Máy chủ: " + udpClient.getHost()
+            + "   |   Trạng thái: Đã kết nối (UDP)");
         mailListModel.clear();
         for (String f : files) mailListModel.addElement(f);
         mailContentArea.setText("");
@@ -170,7 +170,7 @@ public class DashboardPanel extends JPanel {
 
         // Sender IP
         addLabel(form, gbc, row, "IP người gửi (Của bạn):");
-        senderField = new JTextField(network.getLocalIP());
+        senderField = new JTextField(udpClient.getLocalIP());
         senderField.setFont(FONT_BODY);
         addField(form, gbc, row++, senderField);
 
@@ -228,9 +228,9 @@ public class DashboardPanel extends JPanel {
     /* ═══════════════════════════════════════════════════ */
 
     private void doRefresh() {
-        statusBar.log("Đang làm mới hộp thư...");
+        statusBar.log("Đang gửi UDP packet làm mới hộp thư...");
         try {
-            String resp = network.sendCommand(Protocol.LOGIN + "|" + username);
+            String resp = udpClient.guiLenhDon(Protocol.LOGIN + "|" + username);  // ★ UDP: guiLenhDon()
             String[] parts = resp.split("\\|");
             if (parts[0].equals(Protocol.SUCCESS)) {
                 mailListModel.clear();
@@ -245,9 +245,9 @@ public class DashboardPanel extends JPanel {
     private void doReadMail() {
         String selected = mailList.getSelectedValue();
         if (selected == null || username == null) return;
-        statusBar.log("Đang đọc thư: " + selected);
+        statusBar.log("Đang gửi UDP packet đọc thư: " + selected);
         try {
-            List<String> lines = network.readMail(username, selected);
+            List<String> lines = udpClient.docEmail(username, selected);  // ★ UDP: docEmail()
             mailContentArea.setText(String.join("\n", lines));
             mailContentArea.setCaretPosition(0);
             statusBar.log("Đã mở thư: " + selected);
@@ -271,10 +271,10 @@ public class DashboardPanel extends JPanel {
         }
 
         String time = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
-        statusBar.log("Đang gửi email đến " + to + "...");
+        statusBar.log("Đang gửi UDP packet email đến " + to + "...");
 
         try {
-            String[] result = network.sendMail(to, sender, time, subject, content);
+            String[] result = udpClient.guiEmail(to, sender, time, subject, content);  // ★ UDP: guiEmail()
             if (result[0].equals(Protocol.SUCCESS)) {
                 String msg = result.length > 1 ? result[1] : "Gửi thành công!";
                 statusBar.log("Đã gửi email thành công đến user: " + to);
