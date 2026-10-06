@@ -25,7 +25,7 @@ public class UDPRequestHandler {
      * Nhận nội dung 1 UDP packet (dạng String), phân tích lệnh,
      * xử lý và trả về response (cũng dạng String) để gửi lại.
      *
-     * Dòng đầu tiên = lệnh (PING, REGISTER, LOGIN, SEND_MAIL, READ_MAIL)
+     * Dòng đầu tiên = lệnh (PING, REGISTER, LOGIN, LIST_MAIL, SEND_MAIL, READ_MAIL)
      * Các dòng sau (nếu có) = dữ liệu kèm theo
      */
     public String xuLyRequest(String requestData, String clientIP, int clientPort) {
@@ -44,6 +44,9 @@ public class UDPRequestHandler {
         if (dongLenh.startsWith(Protocol.LOGIN)) {
             return xuLyDangNhap(dongLenh, clientIP);
         }
+        if (dongLenh.startsWith(Protocol.LIST_MAIL)) {
+            return xuLyLayDanhSachThu(dongLenh, clientIP);
+        }
         if (dongLenh.equals(Protocol.SEND_MAIL)) {
             return xuLyGuiMail(phanDuLieu, clientIP);
         }
@@ -56,16 +59,28 @@ public class UDPRequestHandler {
 
     /* ── XỬ LÝ ĐĂNG KÝ TÀI KHOẢN ────────────────────── */
 
+    /**
+     * Format: REGISTER|tên tài khoản|mật khẩu
+     * Trả về SUCCESS kèm thời gian tạo (đã ghi vào file accounts.txt).
+     */
     private String xuLyDangKy(String dongLenh, String clientIP) {
-        String[] phan = dongLenh.split("\\|", 2);
+        String[] phan = dongLenh.split("\\|", 3);
         if (phan.length < 2 || phan[1].trim().isEmpty()) {
             return "FAIL|Tên tài khoản không hợp lệ";
         }
         String tenTaiKhoan = phan[1].trim();
-        if (storage.createUser(tenTaiKhoan, serverIP)) {
+        String matKhau     = phan.length > 2 ? phan[2].trim() : "";
+        if (matKhau.isEmpty()) {
+            return "FAIL|Mật khẩu không được để trống";
+        }
+
+        String thoiGianTao = storage.createUser(tenTaiKhoan, matKhau, serverIP);
+        if (thoiGianTao != null) {
             logger.accept("[ĐĂNG KÝ] Client " + clientIP
-                + " tạo tài khoản: " + tenTaiKhoan + " → Thành công");
-            return "SUCCESS|Đăng ký tài khoản '" + tenTaiKhoan + "' thành công!";
+                + " tạo tài khoản: " + tenTaiKhoan
+                + " → Thành công (Thời gian tạo: " + thoiGianTao + ")");
+            return "SUCCESS|Đăng ký tài khoản '" + tenTaiKhoan
+                + "' thành công! Thời gian tạo: " + thoiGianTao;
         } else {
             logger.accept("[ĐĂNG KÝ] Client " + clientIP
                 + " tạo tài khoản: " + tenTaiKhoan + " → Thất bại (trùng tên)");
@@ -75,22 +90,59 @@ public class UDPRequestHandler {
 
     /* ── XỬ LÝ ĐĂNG NHẬP ─────────────────────────────── */
 
+    /**
+     * Format: LOGIN|tên tài khoản|mật khẩu
+     * Kiểm tra tài khoản tồn tại + mật khẩu đúng rồi mới trả danh sách thư.
+     */
     private String xuLyDangNhap(String dongLenh, String clientIP) {
+        String[] phan = dongLenh.split("\\|", 3);
+        if (phan.length < 2 || phan[1].trim().isEmpty()) {
+            return "FAIL|Tên tài khoản không hợp lệ";
+        }
+        String tenTaiKhoan = phan[1].trim();
+        String matKhau     = phan.length > 2 ? phan[2] : "";
+
+        if (!storage.userExists(tenTaiKhoan)) {
+            logger.accept("[ĐĂNG NHẬP] Client " + clientIP
+                + " đăng nhập: " + tenTaiKhoan + " → Thất bại (tài khoản không tồn tại)");
+            return "FAIL|Tài khoản không tồn tại trên hệ thống!";
+        }
+
+        String loiMatKhau = storage.kiemTraMatKhau(tenTaiKhoan, matKhau);
+        if (loiMatKhau != null) {
+            logger.accept("[ĐĂNG NHẬP] Client " + clientIP
+                + " đăng nhập: " + tenTaiKhoan + " → Thất bại (" + loiMatKhau + ")");
+            return "FAIL|" + loiMatKhau;
+        }
+
+        String[] danhSachFile = storage.listMails(tenTaiKhoan);
+        StringBuilder sb = new StringBuilder("SUCCESS");
+        for (String f : danhSachFile) sb.append("|").append(f);
+        logger.accept("[ĐĂNG NHẬP] Client " + clientIP
+            + " đăng nhập: " + tenTaiKhoan + " → Thành công (" + danhSachFile.length + " thư)");
+        return sb.toString();
+    }
+
+    /* ── XỬ LÝ LẤY DANH SÁCH THƯ (LÀM MỚI) ──────────── */
+
+    /**
+     * Format: LIST_MAIL|tên tài khoản
+     * Chỉ liệt kê thư, dùng cho nút "Làm mới" (không cần mật khẩu).
+     */
+    private String xuLyLayDanhSachThu(String dongLenh, String clientIP) {
         String[] phan = dongLenh.split("\\|", 2);
         if (phan.length < 2 || phan[1].trim().isEmpty()) {
             return "FAIL|Tên tài khoản không hợp lệ";
         }
         String tenTaiKhoan = phan[1].trim();
         if (!storage.userExists(tenTaiKhoan)) {
-            logger.accept("[ĐĂNG NHẬP] Client " + clientIP
-                + " đăng nhập: " + tenTaiKhoan + " → Thất bại");
             return "FAIL|Tài khoản không tồn tại trên hệ thống!";
         }
         String[] danhSachFile = storage.listMails(tenTaiKhoan);
         StringBuilder sb = new StringBuilder("SUCCESS");
         for (String f : danhSachFile) sb.append("|").append(f);
-        logger.accept("[ĐĂNG NHẬP] Client " + clientIP
-            + " đăng nhập: " + tenTaiKhoan + " → Thành công (" + danhSachFile.length + " thư)");
+        logger.accept("[LÀM MỚI] Client " + clientIP
+            + " tải lại hộp thư [" + tenTaiKhoan + "] (" + danhSachFile.length + " thư)");
         return sb.toString();
     }
 

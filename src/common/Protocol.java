@@ -11,6 +11,7 @@ public final class Protocol {
     public static final String PING        = "PING_CHECK";
     public static final String REGISTER    = "REGISTER";
     public static final String LOGIN       = "LOGIN";
+    public static final String LIST_MAIL   = "LIST_MAIL";
     public static final String SEND_MAIL   = "SEND_MAIL";
     public static final String READ_MAIL   = "READ_MAIL";
 

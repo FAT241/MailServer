@@ -230,7 +230,7 @@ public class DashboardPanel extends JPanel {
     private void doRefresh() {
         statusBar.log("Đang gửi UDP packet làm mới hộp thư...");
         try {
-            String resp = udpClient.guiLenhDon(Protocol.LOGIN + "|" + username);  // ★ UDP: guiLenhDon()
+            String resp = udpClient.guiLenhDon(Protocol.LIST_MAIL + "|" + username);  // ★ UDP: guiLenhDon()
             String[] parts = resp.split("\\|");
             if (parts[0].equals(Protocol.SUCCESS)) {
                 mailListModel.clear();
